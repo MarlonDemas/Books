@@ -14,6 +14,7 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.handler.BodyHandler;
+import io.vertx.ext.web.handler.StaticHandler;
 
 /**
  *
@@ -24,10 +25,10 @@ public class MainVerticle extends AbstractVerticle {
     private InMemoryBookStore store = new InMemoryBookStore();
     
     @Override
-    public void start(Future<Void> startFuture) throws Exception {
-        
+    public void start(Future<Void> startFuture) throws Exception {        
         Router router = Router.router(vertx);
         router.route().handler(BodyHandler.create());
+        router.route("/*").handler(StaticHandler.create());
         
         //GET /books
         getAll(router);
@@ -70,9 +71,18 @@ public class MainVerticle extends AbstractVerticle {
 
     private void registerErrorHandler(Router router) {
         router.errorHandler(500, event -> {
+            if(event.failure() instanceof IllegalArgumentException) {
+                event.response()
+                    .putHeader(HttpHeaders.CONTENT_TYPE, HttpHeaderValues.APPLICATION_JSON)
+                    .setStatusCode(HttpResponseStatus.BAD_REQUEST.code())
+                    .end(new JsonObject().put("error", event.failure().getMessage()).encode());
+                    return;
+            }
+            
             System.err.println("Failed: " + event.failure().getMessage());
             event.response()
                     .putHeader(HttpHeaders.CONTENT_TYPE, HttpHeaderValues.APPLICATION_JSON)
+                    .setStatusCode(HttpResponseStatus.INTERNAL_SERVER_ERROR.code())
                     .end(new JsonObject().put("error", event.failure().getMessage()).encode());
         });
     }
@@ -94,7 +104,6 @@ public class MainVerticle extends AbstractVerticle {
         //POST
         router.post("/books").handler(request -> {
             final JsonObject requestBody = request.getBodyAsJson();
-            System.out.println("Request Body: " + requestBody);
             // Store
             store.add(requestBody.mapTo(Book.class));
             // Return response
